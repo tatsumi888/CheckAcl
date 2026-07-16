@@ -25,6 +25,13 @@ rem         delete dirlist.txt and checkpoint.txt.
 rem ============================================================
 setlocal disabledelayedexpansion
 
+rem Fix the console code page so that icacls/dir/findstr all read and
+rem write file names with one consistent encoding (default: 932 = Shift-JIS
+rem for Japanese Windows; override by setting ACL_CODEPAGE beforehand).
+if not defined ACL_CODEPAGE set "ACL_CODEPAGE=932"
+for /f "tokens=2 delims=:" %%C in ('chcp') do set /a ORIGCP=%%C
+chcp %ACL_CODEPAGE% >nul
+
 set "ROOT=%~1"
 set "OUTDIR=%~2"
 set "MAXDIRS=%~3"
@@ -165,6 +172,17 @@ exit /b
 
 rem ------------------------------------------------------------
 :finish
+rem on full completion, deduplicate CSV rows (duplicates can appear when
+rem a run was interrupted in the middle of a folder)
+if defined STOPPED goto skip_dedup
+if not exist "%EXPCSV%" goto skip_dedup
+set "TMPS=%TEMP%\_acl_sort.tmp"
+more +1 "%EXPCSV%" | sort /unique > "%TMPS%" 2>nul
+if errorlevel 1 goto skip_dedup
+>"%EXPCSV%" echo Path,Account,AccessType,Rights
+type "%TMPS%" >> "%EXPCSV%"
+del "%TMPS%" 2>nul
+:skip_dedup
 rem denied.csv regenerated from denied.txt on every run
 if exist "%DENIED%" (
   >"%DENIEDCSV%" echo DeniedEntry
@@ -183,4 +201,5 @@ if defined STOPPED (
 ) else (
   echo [INFO] Completed.
 )
+if defined ORIGCP chcp %ORIGCP% >nul
 endlocal
